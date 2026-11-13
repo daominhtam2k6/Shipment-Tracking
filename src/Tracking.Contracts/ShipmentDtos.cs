@@ -29,4 +29,10 @@ public sealed record ShipmentEventResponse(
     string? Note,
     DateTimeOffset OccurredAt
 );
-public sealed record ApiError(string Code, string Message);
+public sealed record ApiError(string Code, string Message)
+{
+    public const string InvalidShipment = "INVALID_SHIPMENT";
+    public const string InvalidEvent = "INVALID_EVENT";
+    public const string ShipmentNotFound = "SHIPMENT_NOT_FOUND";
+    public const string InvalidTransition = "INVALID_TRANSITION";
+}
