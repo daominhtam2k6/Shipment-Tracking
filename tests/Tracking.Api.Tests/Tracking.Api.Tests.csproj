@@ -18,4 +18,8 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tracking.Contracts\Tracking.Contracts.csproj" />
+  </ItemGroup>
+
 </Project>

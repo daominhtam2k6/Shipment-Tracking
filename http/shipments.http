@@ -1,0 +1,119 @@
+@host = http://localhost:5100
+
+### 1. Tạo bưu gửi hợp lệ -> 201, header Location, status = "Created"
+# @name create
+POST {{host}}/shipments
+Content-Type: application/json
+
+{
+  "senderName": "Nguyen Van A",
+  "senderAddress": "12 Pho Hue, Ha Noi",
+  "receiverName": "Tran Thi B",
+  "receiverAddress": "34 Bach Dang, Da Nang",
+  "initialLocation": "Kho Ha Noi"
+}
+
+### 2. Tạo thiếu dữ liệu -> 400 INVALID_SHIPMENT
+POST {{host}}/shipments
+Content-Type: application/json
+
+{
+  "senderName": "",
+  "senderAddress": "",
+  "receiverName": "",
+  "receiverAddress": ""
+}
+
+### 3. Tra cứu theo mã vừa tạo -> 200
+GET {{host}}/shipments/{{create.response.body.$.trackingCode}}
+
+### 4a. Mã đúng định dạng nhưng không tồn tại -> 404 SHIPMENT_NOT_FOUND
+GET {{host}}/shipments/VN261114AAAAAA
+
+### 4b. Mã sai định dạng -> 404 SHIPMENT_NOT_FOUND
+GET {{host}}/shipments/abc
+
+### 5. Chuyển hợp lệ Created -> InTransit -> 201
+POST {{host}}/shipments/{{create.response.body.$.trackingCode}}/events
+Content-Type: application/json
+
+{
+  "status": "InTransit",
+  "location": "Kho Ha Noi",
+  "note": "Roi kho"
+}
+
+### 6. Chuyển hợp lệ InTransit -> AtHub -> 201
+POST {{host}}/shipments/{{create.response.body.$.trackingCode}}/events
+Content-Type: application/json
+
+{
+  "status": "AtHub",
+  "location": "Trung tam Da Nang"
+}
+
+### 7. Tạo bưu gửi thứ hai (dùng cho các ca lỗi)
+# @name create2
+POST {{host}}/shipments
+Content-Type: application/json
+
+{
+  "senderName": "Le Van C",
+  "senderAddress": "Hai Phong",
+  "receiverName": "Pham Thi D",
+  "receiverAddress": "Hue"
+}
+
+### 8. Chuyển sai Created -> Delivered -> 409 INVALID_TRANSITION
+POST {{host}}/shipments/{{create2.response.body.$.trackingCode}}/events
+Content-Type: application/json
+
+{
+  "status": "Delivered",
+  "location": "Hue"
+}
+
+### 9. Gửi trạng thái Created làm sự kiện -> 400 INVALID_EVENT
+POST {{host}}/shipments/{{create2.response.body.$.trackingCode}}/events
+Content-Type: application/json
+
+{
+  "status": "Created",
+  "location": "Hai Phong"
+}
+
+### 10. Thiếu vị trí -> 400 INVALID_EVENT
+POST {{host}}/shipments/{{create2.response.body.$.trackingCode}}/events
+Content-Type: application/json
+
+{
+  "status": "InTransit",
+  "location": ""
+}
+
+### 11. Trạng thái không thuộc enum -> 400 do framework trả (body KHÔNG phải ApiError)
+POST {{host}}/shipments/{{create2.response.body.$.trackingCode}}/events
+Content-Type: application/json
+
+{
+  "status": "Flying",
+  "location": "Hai Phong"
+}
+
+### 12. Thêm sự kiện cho mã không tồn tại -> 404
+POST {{host}}/shipments/VN261114AAAAAA/events
+Content-Type: application/json
+
+{
+  "status": "InTransit",
+  "location": "Ha Noi"
+}
+
+### 13. Lịch sử bưu gửi thứ nhất -> 200, cũ nhất trước: Created, InTransit, AtHub
+GET {{host}}/shipments/{{create.response.body.$.trackingCode}}/history
+
+### 14. Lịch sử mã không tồn tại -> 404
+GET {{host}}/shipments/VN261114AAAAAA/history
+
+### 15. Kiểm tra sức khỏe -> 200
+GET {{host}}/health
