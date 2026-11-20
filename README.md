@@ -2,27 +2,35 @@
 
 Học phần Phát triển ứng dụng phân tán. Hệ thống quản lý và theo dõi hành trình bưu gửi qua nhiều điểm xử lý.
 
-> **Trạng thái: tuần 1.** Hiện có REST API (dữ liệu lưu trong bộ nhớ, mất khi tắt API) và máy khách dòng lệnh cho Operator. Các thành phần khác (SignalR, cơ sở dữ liệu, RabbitMQ, Docker) được bổ sung ở các tuần sau.
+> **Trạng thái: tuần 2.** Có REST API (dữ liệu trong bộ nhớ), Notification.Api đẩy thông báo thời gian thực bằng SignalR, máy khách Operator và Customer. Cơ sở dữ liệu, RabbitMQ, Docker được bổ sung ở các tuần sau.
 
 ## Kiến trúc hiện tại
 
 ```mermaid
 flowchart LR
-    Op["Operator.Client<br/>(console)"] -- "HTTP / JSON" --> Api["Tracking.Api<br/>(Minimal API)"]
-    Api --> Repo[("Kho dữ liệu<br/>trong bộ nhớ")]
-    Op -.-> Con["Tracking.Contracts"]
-    Api -.-> Con
+    Op["Operator.Client"] -- "REST" --> Api["Tracking.Api :5100"]
+    Api -- "REST nội bộ (tạm thời)" --> Noti["Notification.Api :5200"]
+    Noti -- "SignalR, nhóm shipment:{mã}" --> Cus["Customer.Client"]
+    Cus -- "REST: trạng thái, lịch sử" --> Api
 ```
 
 | Dự án | Vai trò |
 |---|---|
-| `src/Tracking.Contracts` | Hợp đồng dùng chung: DTO, enum trạng thái, mã lỗi, máy trạng thái, sinh và chuẩn hóa mã theo dõi, cấu hình JSON |
-| `src/Tracking.Api` | Máy chủ REST: nhận request, kiểm tra đầu vào, gọi kho dữ liệu, trả mã HTTP |
-| `src/Operator.Client` | Máy khách console: menu tạo bưu gửi, cập nhật trạng thái, tra cứu |
+| `src/Tracking.Contracts` | Hợp đồng dùng chung: DTO, enum, mã lỗi, máy trạng thái, mã theo dõi, cấu hình JSON, tên phương thức SignalR |
+| `src/Tracking.Api` | REST API, nguồn sự thật của dữ liệu bưu gửi |
+| `src/Notification.Api` | Hub SignalR, đẩy thông báo đến đúng nhóm bưu gửi |
+| `src/Operator.Client` | Máy khách nhân viên: tạo bưu gửi, cập nhật trạng thái |
+| `src/Customer.Client` | Máy khách khách hàng: theo dõi bưu gửi, nhận thông báo thời gian thực |
 | `tests/Tracking.Api.Tests` | Kiểm thử đơn vị (xUnit) |
-| `http/shipments.http` | Các request mẫu (extension REST Client của VS Code) |
+| `http/shipments.http` | Request mẫu (REST Client) |
 
-Hai tiến trình chỉ chia sẻ `Tracking.Contracts`; client không tham chiếu `Tracking.Api`.
+Các tiến trình chỉ chia sẻ `Tracking.Contracts`, không tham chiếu code của nhau.
+
+### Thông báo thời gian thực
+
+- Customer gọi `WatchShipment(mã)` để vào nhóm `shipment:{MÃ}`, rồi mới lấy trạng thái và lịch sử qua REST.
+- Thông báo chỉ là tiện ích; dữ liệu đúng luôn nằm ở Tracking.Api. Khi kết nối lại, Customer vào nhóm lại và gọi REST để bù sự kiện bị lỡ, bỏ qua bản trùng theo `EventId`.
+- Nếu Notification.Api tắt, việc cập nhật trạng thái vẫn thành công (Tracking.Api chỉ ghi log). Thông báo trong lúc đó bị mất; tuần 5 thay đường gọi nội bộ bằng RabbitMQ để khắc phục.
 
 ## Yêu cầu
 
@@ -31,15 +39,16 @@ Hai tiến trình chỉ chia sẻ `Tracking.Contracts`; client không tham chi�
 
 ## Chạy hệ thống
 
-```powershell
-# Terminal 1: API (cổng 5100)
-dotnet run --project src/Tracking.Api
+Mỗi lệnh chạy trong một terminal riêng:
 
-# Terminal 2: máy khách Operator
+```powershell
+dotnet run --project src/Tracking.Api        # cổng 5100
+dotnet run --project src/Notification.Api    # cổng 5200
 dotnet run --project src/Operator.Client
+dotnet run --project src/Customer.Client
 ```
 
-Địa chỉ API của client lấy theo thứ tự: tham số dòng lệnh, biến môi trường `TRACKING_API_URL`, mặc định `http://localhost:5100`.
+Cấu hình địa chỉ bằng biến môi trường: `TRACKING_API_URL` (Operator, Customer), `NOTIFICATION_API_URL` (Tracking.Api, Customer).
 
 ```powershell
 dotnet run --project src/Operator.Client -- http://localhost:5100

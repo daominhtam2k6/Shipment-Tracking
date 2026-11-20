@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Customer.Client/Customer.Client.csproj" />
+    <Project Path="src/Notification.Api/Notification.Api.csproj" />
     <Project Path="src/Operator.Client/Operator.Client.csproj" />
     <Project Path="src/Tracking.Api/Tracking.Api.csproj" />
     <Project Path="src/Tracking.Contracts/Tracking.Contracts.csproj" />
