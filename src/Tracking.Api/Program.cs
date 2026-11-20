@@ -11,6 +11,13 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 
 builder.Services.AddSingleton<IShipmentRepository, InMemoryShipmentRepository>();
 
+var notificationUrl = builder.Configuration["NOTIFICATION_API_URL"] ?? "http://localhost:5200";
+builder.Services.AddHttpClient<NotificationClient>(c =>
+{
+    c.BaseAddress = new Uri(notificationUrl);
+    c.Timeout = TimeSpan.FromSeconds(2);
+});
+
 var app = builder.Build();
 
 app.MapGet("/health", () => Results.Ok(new
@@ -45,7 +52,8 @@ shipments.MapGet("/{trackingCode}", async (string trackingCode, IShipmentReposit
 });
 
 shipments.MapPost("/{trackingCode}/events", async (
-    string trackingCode, AddShipmentEventRequest request, IShipmentRepository repo) =>
+    string trackingCode, AddShipmentEventRequest request,
+    IShipmentRepository repo, NotificationClient notifier) =>
 {
     if (!TrackingCodeGenerator.TryNormalize(trackingCode, out var code))
         return NotFound();
@@ -59,9 +67,24 @@ shipments.MapPost("/{trackingCode}/events", async (
 
     var result = await repo.AddEventAsync(code, request);
 
+    if (result.Outcome == AddEventOutcome.Success)
+    {
+        var e = result.Event!;
+
+        var notification = new ShipmentNotification(
+            e.EventId,
+            e.TrackingCode,
+            e.Status,
+            e.Location,
+            e.OccurredAt
+        );
+        await notifier.NotifyAsync(notification);
+
+        return Results.Created($"/shipments/{code}/history", e);
+    }
+
     return result.Outcome switch
     {
-        AddEventOutcome.Success => Results.Created($"/shipments/{code}/history", result.Event),
         AddEventOutcome.NotFound => NotFound(),
         AddEventOutcome.InvalidTransition => Results.Conflict(new ApiError(
             ApiError.InvalidTransition,
